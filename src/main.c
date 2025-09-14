@@ -3,7 +3,16 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-// callbacks... no need for a main function loop anymore
+static SDL_Window *window = NULL;
+static SDL_Renderer *renderer = NULL;
+
+#define WINDOW_WIDTH 640
+#define WINDOW_HEIGHT 480
+
+/////////////////
+/// CALLBACKS ///
+/////////////////
+// no need for a main function loop anymore
 
 // called at the beginning
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
