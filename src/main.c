@@ -1,76 +1,27 @@
+#define SDL_MAIN_USE_CALLBACKS 1 
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include "global.h"
 
-bool init() {
-	bool success = SDL_Init(SDL_INIT_VIDEO);
-	if (!success) {
-		SDL_Log("Initialization failed! Error: %s\n", SDL_GetError());
-	}
-	return success;
+// callbacks... no need for a main function loop anymore
+
+// called at the beginning
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
+	return SDL_APP_CONTINUE;
 }
 
-bool makeWindow() {
-	gWindow = SDL_CreateWindow("Snake", kScreenWidth, kScreenHeight, 0);
-
-	if (gWindow == NULL) {
-		SDL_Log("Window creation failed! Error: %s\n", SDL_GetError());
-		return false;
-	}
-
-	gScreenSurface = SDL_GetWindowSurface(gWindow);
-	
-	return true;
+// handle events like key presses
+SDL_AppResult SDL_AppEvent(void **appstate, SDL_Event *event) {
+	return SDL_APP_CONTINUE;
 }
 
-void end() {
-	SDL_Quit();
-	SDL_DestroyWindow(gWindow);
-	gWindow = NULL;
+// handles the main loop (animation rendering and game logic)
+SDL_AppResult SDL_AppIterate(void **appstate) {
+	return SDL_APP_CONTINUE;
 }
 
-void loop() {
-	bool quit = false;
-	SDL_Event e;
-	SDL_zero(e);
+// called at the end, and handles some of the exits
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 
-	while (!quit) {
-		while (SDL_PollEvent(&e)) {
-			if (e.type == SDL_EVENT_QUIT) {
-				quit = true;
-			}
-		}
-
-		SDL_FillSurfaceRect(
-				gScreenSurface, 
-				NULL, 
-				SDL_MapSurfaceRGB(gScreenSurface, bgColorR, bgColorG, bgColorB));
-
-		SDL_BlitSurface(
-				gHelloWorld,
-				NULL,
-				gScreenSurface, 
-				NULL);
-
-		SDL_UpdateWindowSurface(gWindow);
-	}
 }
 
-
-int main(int argc, char *argv[]) {
-	bool success = true;
-
-	if (!init()) {
-		return -1;
-	}
-
-	if (!makeWindow()) {
-		return -2;
-	}
-
-	loop();
-
-	end();
-
-	return 0;
-}
