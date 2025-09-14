@@ -143,6 +143,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 				case SDL_SCANCODE_ESCAPE:
 				case SDL_SCANCODE_Q:
 					return SDL_APP_SUCCESS;
+				// Resetting the game
+				case SDL_SCANCODE_R:
+					resetGame();
+					break;
 				// moving the snake
 				case SDL_SCANCODE_UP:
 				case SDL_SCANCODE_K:
@@ -169,9 +173,22 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 // handles the main loop (animation rendering and game logic)
 SDL_AppResult SDL_AppIterate(void *appstate) {
 	// set the color to black
-	// set the color to everywhere
 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+	// set the color to everywhere
 	SDL_RenderClear(renderer);
+
+	SDL_SetRenderDrawColor(renderer, 0, 255, 0, SDL_ALPHA_OPAQUE);
+	for (size_t i = 0; i < foodSize; i++) {
+		drawRect.x = food[i].x * TILE_SIZE;
+		drawRect.y = food[i].y * TILE_SIZE;
+		SDL_RenderFillRect(renderer, &drawRect);
+
+		// if the food ends up getting "eaten" (or collides with the head of the snake) 
+		// pick a new spot for the food
+		if ((snakeSize > 0) && (food[i].x == snake[0].x) && (food[i].y == snake[0].y)) {
+			food[i] = randomTile();
+		}
+	}
 
 	if (snakeSize > 0) {
 		if (direction == UP) { snake[0].y--; }
