@@ -2,6 +2,7 @@
 #include <SDL3/SDL_main.h>
 #include "macros.h"
 #include "data.h"
+#include "functions.h"
 
 static SDL_AppResult handle_key_event_(SnakeContext *ctx, SDL_Scancode key_code) {
 	switch (key_code) {

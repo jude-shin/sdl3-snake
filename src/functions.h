@@ -1,7 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include "macros.h"
-#include "dats.h"
+#include "data.h"
 
 SnakeCell snake_cell_at(const SnakeContext *ctx, char x, char y);
 static void set_rect_xy_(SDL_FRect *r, short x, short y);
