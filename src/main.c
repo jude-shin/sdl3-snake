@@ -11,7 +11,7 @@ static SDL_Renderer *renderer = NULL;
 
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
-#define TITLE_SIZE 20
+#define TILE_SIZE 20
 
 int direction;
 #define UP 0
@@ -23,7 +23,7 @@ SDL_Point randomTile() {
 	return (SDL_Point) { 
 		rand() % (WINDOW_WIDTH / TILE_SIZE - 1),
 		rand() % (WINDOW_HEIGHT / TILE_SIZE - 1)
-	}
+	};
 }
 
 /////////////////
