@@ -9,6 +9,8 @@ kill the snake at the border
 show the score on the screen
 change the number of apples that are on the screen
 macro for frame rate
+condense the two addTo Functions into one
+macro for number of food available
 */
 
 #include <stdio.h>
@@ -38,8 +40,8 @@ int direction;
 #define RIGHT 3
 
 // snake
-SDL_Point* snake;
-size_t snakeSize, snakeCap;
+SDL_Point *snake, *food;
+size_t snakeSize, snakeCap, foodSize, foodCap;
 
 
 
@@ -53,6 +55,7 @@ void addToSnake(SDL_Point point) {
 
 		if (tmp_snake == NULL) {
 			free(snake);
+			free(food);
 			exit(1);
 		}
 
@@ -61,7 +64,26 @@ void addToSnake(SDL_Point point) {
 	}
 
 	snake[snakeSize] = point;
-	snakeSize ++;
+	snakeSize++;
+}
+
+void addToFood(SDL_Point point) {
+	if (foodSize == foodCap) {
+		size_t newCap = (foodCap == 0) ? 1 : foodCap * 2;
+		SDL_Point* tmp_food = (SDL_Point*) realloc(food, newCap * sizeof(SDL_Point));
+
+		if (tmp_food == NULL) {
+			free(snake);
+			free(food);
+			exit(1);
+		}
+
+		food = tmp_food;
+		foodCap = newCap;
+	}
+
+	food[foodSize] = point;
+	foodSize++;
 }
 
 SDL_Point randomTile() {
@@ -72,7 +94,13 @@ SDL_Point randomTile() {
 }
 
 void resetGame() {
-	snakeSize = 0;
+	snakeSize = foodSize = 0;
+
+	// init food size
+	for (int i = 0; i < 3; i++) {
+		addToFood(randomTile());
+	}
+
 	addToSnake(randomTile());
 	direction = (rand() % 4);
 }
@@ -119,15 +147,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 				case SDL_SCANCODE_UP:
 				case SDL_SCANCODE_K:
 					direction = UP;
+					break;
 				case SDL_SCANCODE_DOWN:
 				case SDL_SCANCODE_J:
 					direction = DOWN;
+					break;
 				case SDL_SCANCODE_LEFT:
 				case SDL_SCANCODE_H:
 					direction = LEFT;
+					break;
 				case SDL_SCANCODE_RIGHT:
 				case SDL_SCANCODE_L:
 					direction = RIGHT;
+					break;
 			}
 			break;
 	}
@@ -137,11 +169,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 // handles the main loop (animation rendering and game logic)
 SDL_AppResult SDL_AppIterate(void *appstate) {
 	// set the color to black
-	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 	// set the color to everywhere
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 	SDL_RenderClear(renderer);
-	// show what we just did to the renderer
-	SDL_RenderPresent(renderer);
 
 	if (snakeSize > 0) {
 		if (direction == UP) { snake[0].y--; }
@@ -160,11 +190,25 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 		SDL_RenderFillRect(renderer, &drawRect);
 	}
 
+
+	// SDL_Log("Snake Length: %ld", snakeSize);
+	// SDL_Log("Head X: %d", snake[0].x);
+	// SDL_Log("Head Y: %d", snake[0].y);
+
+
 	// frame rate
 	SDL_Delay(90);
+	// show what we just did to the renderer
+	SDL_RenderPresent(renderer);
 	return SDL_APP_CONTINUE;
 }
 
 // called at the end, and handles some of the exits
-void SDL_AppQuit(void *appstate, SDL_AppResult result) {}
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
+	SDL_DestroyRenderer(renderer);
+	SDL_DestroyWindow(window);
+
+	free(snake);
+	free(food);
+}
 
