@@ -242,26 +242,6 @@ static SDL_AppResult handle_key_event_(SnakeContext *ctx, SDL_Scancode key_code)
 	return SDL_APP_CONTINUE;
 }
 
-static SDL_AppResult handle_hat_event_(SnakeContext *ctx, Uint8 hat) {
-	switch (hat) {
-		case SDL_HAT_RIGHT:
-			snake_redir(ctx, SNAKE_DIR_RIGHT);
-			break;
-		case SDL_HAT_UP:
-			snake_redir(ctx, SNAKE_DIR_UP);
-			break;
-		case SDL_HAT_LEFT:
-			snake_redir(ctx, SNAKE_DIR_LEFT);
-			break;
-		case SDL_HAT_DOWN:
-			snake_redir(ctx, SNAKE_DIR_DOWN);
-			break;
-		default:
-			break;
-	}
-	return SDL_APP_CONTINUE;
-}
-
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
 	AppState *as = (AppState *)appstate;
@@ -368,9 +348,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
-	if (joystick) {
-		SDL_CloseJoystick(joystick);
-	}
 	if (appstate != NULL) {
 		AppState *as = (AppState *)appstate;
 		SDL_DestroyRenderer(as->renderer);
