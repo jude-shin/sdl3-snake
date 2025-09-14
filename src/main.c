@@ -1,5 +1,16 @@
 #define SDL_MAIN_USE_CALLBACKS 1 
 
+/*  
+TODO: 
+seperate code into different files
+allow for the snake to have different macro colors
+allow for the background to have different macro colors
+kill the snake at the border
+show the score on the screen
+change the number of apples that are on the screen
+macro for frame rate
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -84,6 +95,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 		return SDL_APP_FAILURE;
 	}
 
+	drawRect.w = drawRect.h = TILE_SIZE;
+	srand(time(NULL));
+
+	resetGame();
+
 	return SDL_APP_CONTINUE;
 }
 
@@ -125,7 +141,26 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 	SDL_RenderClear(renderer);
 	// show what we just did to the renderer
 	SDL_RenderPresent(renderer);
-	
+
+	if (snakeSize > 0) {
+		if (direction == UP) { snake[0].y--; }
+		if (direction == DOWN) { snake[0].y++; }
+		if (direction == LEFT) { snake[0].x--; }
+		if (direction == RIGHT) { snake[0].x++; }
+
+		if(snake[0].x	>= (WINDOW_WIDTH / TILE_SIZE)) { snake[0].x = 0; }
+		if(snake[0].y	>= (WINDOW_HEIGHT / TILE_SIZE)) { snake[0].y = 0; }
+		if(snake[0].x < 0) { snake[0].x = (WINDOW_WIDTH / TILE_SIZE) -1; }
+		if(snake[0].y < 0) { snake[0].y = (WINDOW_HEIGHT / TILE_SIZE) -1; }
+
+		SDL_SetRenderDrawColor(renderer, 255, 0, 0, SDL_ALPHA_OPAQUE);
+		drawRect.x = snake[0].x * TILE_SIZE;
+		drawRect.y = snake[0].y * TILE_SIZE;
+		SDL_RenderFillRect(renderer, &drawRect);
+	}
+
+	// frame rate
+	SDL_Delay(90);
 	return SDL_APP_CONTINUE;
 }
 
