@@ -24,8 +24,6 @@
 #define SNAKE_CELL_SET_BITS  (~(~0u << SNAKE_CELL_MAX_BITS))
 #define SHIFT(x, y) (((x) + ((y) * SNAKE_GAME_WIDTH)) * SNAKE_CELL_MAX_BITS)
 
-static SDL_Joystick *joystick = NULL;
-
 typedef enum
 {
 	SNAKE_CELL_NOTHING = 0U,
@@ -56,6 +54,7 @@ typedef struct
 	unsigned occupied_cells;
 } SnakeContext;
 
+// use the app state for any rendering or other game data
 typedef struct
 {
 	SDL_Window *window;
@@ -359,22 +358,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 	switch (event->type) {
 		case SDL_EVENT_QUIT:
 			return SDL_APP_SUCCESS;
-		case SDL_EVENT_JOYSTICK_ADDED:
-			if (joystick == NULL) {
-				joystick = SDL_OpenJoystick(event->jdevice.which);
-				if (!joystick) {
-					SDL_Log("Failed to open joystick ID %u: %s", (unsigned int) event->jdevice.which, SDL_GetError());
-				}
-			}
-			break;
-		case SDL_EVENT_JOYSTICK_REMOVED:
-			if (joystick && (SDL_GetJoystickID(joystick) == event->jdevice.which)) {
-				SDL_CloseJoystick(joystick);
-				joystick = NULL;
-			}
-			break;
-		case SDL_EVENT_JOYSTICK_HAT_MOTION:
-			return handle_hat_event_(ctx, event->jhat.value);
 		case SDL_EVENT_KEY_DOWN:
 			return handle_key_event_(ctx, event->key.scancode);
 		default:
