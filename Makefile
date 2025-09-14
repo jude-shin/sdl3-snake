@@ -1,7 +1,7 @@
 CC = gcc
 FLAGS= -Wall -std=c99 -pedantic -g -lSDL3
 
-MAIN = main
+MAIN = main.out
 OBJS = bin/main.o
 PROGS = $(MAIN)
 
