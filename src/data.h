@@ -1,6 +1,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#ifndef DATA 
+#define DATA 
+
 typedef enum {
 	SNAKE_CELL_NOTHING = 0U,
 	SNAKE_CELL_SRIGHT = 1U,
@@ -36,4 +39,4 @@ typedef struct {
 	Uint64 last_step;
 } AppState;
 
-
+#endif

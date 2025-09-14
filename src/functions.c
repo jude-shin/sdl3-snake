@@ -1,7 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include "macros.h"
-#include "dats.h"
+#include "data.h"
 
 SnakeCell snake_cell_at(const SnakeContext *ctx, char x, char y) {
 	const int shift = SHIFT(x, y);
@@ -10,12 +10,12 @@ SnakeCell snake_cell_at(const SnakeContext *ctx, char x, char y) {
 	return (SnakeCell)((range >> (shift % 8)) & SNAKE_CELL_SET_BITS);
 }
 
-static void set_rect_xy_(SDL_FRect *r, short x, short y) {
+void set_rect_xy_(SDL_FRect *r, short x, short y) {
 	r->x = (float)(x * SNAKE_BLOCK_SIZE_IN_PIXELS);
 	r->y = (float)(y * SNAKE_BLOCK_SIZE_IN_PIXELS);
 }
 
-static void put_cell_at_(SnakeContext *ctx, char x, char y, SnakeCell ct) {
+void put_cell_at_(SnakeContext *ctx, char x, char y, SnakeCell ct) {
 	const int shift = SHIFT(x, y);
 	const int adjust = shift % 8;
 	unsigned char *const pos = ctx->cells + (shift / 8);
@@ -26,11 +26,11 @@ static void put_cell_at_(SnakeContext *ctx, char x, char y, SnakeCell ct) {
 	SDL_memcpy(pos, &range, sizeof(range));
 }
 
-static int are_cells_full_(SnakeContext *ctx) {
+int are_cells_full_(SnakeContext *ctx) {
 	return ctx->occupied_cells == SNAKE_GAME_WIDTH * SNAKE_GAME_HEIGHT;
 }
 
-static void new_food_pos_(SnakeContext *ctx) {
+void new_food_pos_(SnakeContext *ctx) {
 	while (true) {
 		const char x = (char) SDL_rand(SNAKE_GAME_WIDTH);
 		const char y = (char) SDL_rand(SNAKE_GAME_HEIGHT);
@@ -66,7 +66,7 @@ void snake_redir(SnakeContext *ctx, SnakeDirection dir) {
 	}
 }
 
-static void wrap_around_(char *val, char max) {
+void wrap_around_(char *val, char max) {
 	if (*val < 0) {
 		*val = max - 1;
 	} else if (*val > max - 1) {

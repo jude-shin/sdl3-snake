@@ -1,4 +1,6 @@
-#define SDL_MAIN_USE_CALLBACKS 1 /* use the callbacks instead of main() */
+#ifndef MACROS 
+#define MACROS 
+
 #define STEP_RATE_IN_MILLISECONDS  125
 #define SNAKE_BLOCK_SIZE_IN_PIXELS 24
 #define SDL_WINDOW_WIDTH (SNAKE_BLOCK_SIZE_IN_PIXELS * SNAKE_GAME_WIDTH)
@@ -12,3 +14,4 @@
 #define SNAKE_CELL_SET_BITS  (~(~0u << SNAKE_CELL_MAX_BITS))
 #define SHIFT(x, y) (((x) + ((y) * SNAKE_GAME_WIDTH)) * SNAKE_CELL_MAX_BITS)
 
+#endif

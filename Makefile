@@ -3,7 +3,7 @@ CC = gcc
 FLAGS= -Wall -std=c99 -g -lSDL3
 
 MAIN = main.out
-OBJS = bin/main.o 
+OBJS = bin/main.o bin/functions.o
 PROGS = $(MAIN)
 
 all : $(PROGS)
