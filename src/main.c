@@ -30,6 +30,7 @@ static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
 
 // movement
+SDL_FRect drawRect;
 int direction;
 #define UP 0
 #define DOWN 1
