@@ -1,5 +1,8 @@
 #define SDL_MAIN_USE_CALLBACKS 1 
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
@@ -8,6 +11,20 @@ static SDL_Renderer *renderer = NULL;
 
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
+#define TITLE_SIZE 20
+
+int direction;
+#define UP 0
+#define DOWN 1
+#define LEFT 2
+#define RIGHT 3
+
+SDL_Point randomTile() {
+	return (SDL_Point) { 
+		rand() % (WINDOW_WIDTH / TILE_SIZE - 1),
+		rand() % (WINDOW_HEIGHT / TILE_SIZE - 1)
+	}
+}
 
 /////////////////
 /// CALLBACKS ///
@@ -42,6 +59,18 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 				case SDL_SCANCODE_ESCAPE:
 				case SDL_SCANCODE_Q:
 					return SDL_APP_SUCCESS;
+				case SDL_SCANCODE_UP:
+				case SDL_SCANCODE_K:
+					direction = UP;
+				case SDL_SCANCODE_DOWN:
+				case SDL_SCANCODE_J:
+					direction = DOWN;
+				case SDL_SCANCODE_LEFT:
+				case SDL_SCANCODE_H:
+					direction = LEFT;
+				case SDL_SCANCODE_RIGHT:
+				case SDL_SCANCODE_L:
+					direction = RIGHT;
 			}
 			break;
 	}
