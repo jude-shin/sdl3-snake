@@ -1,266 +1,398 @@
-#define SDL_MAIN_USE_CALLBACKS 1 
+/* snake.c ... */
 
-/*  
-TODO: 
-seperate code into different files
-allow for the snake to have different macro colors
-allow for the background to have different macro colors
-kill the snake at the border
-show the score on the screen
-change the number of apples that are on the screen
-macro for frame rate
-condense the two addTo Functions into one
-macro for number of food available
-make a better collision system for the snake (not just iterating over all of the snake values)
-seperate the game logic and the rendering logic?
-*/
+/*
+ * Logic implementation of the Snake game. It is designed to efficiently
+ * represent the state of the game in memory.
+ *
+ * This code is public domain. Feel free to use it for any purpose!
+ */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
+#define SDL_MAIN_USE_CALLBACKS 1 /* use the callbacks instead of main() */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-////////////////////////////
-/// Variable Declaration ///
-////////////////////////////
+#define STEP_RATE_IN_MILLISECONDS  125
+#define SNAKE_BLOCK_SIZE_IN_PIXELS 24
+#define SDL_WINDOW_WIDTH           (SNAKE_BLOCK_SIZE_IN_PIXELS * SNAKE_GAME_WIDTH)
+#define SDL_WINDOW_HEIGHT          (SNAKE_BLOCK_SIZE_IN_PIXELS * SNAKE_GAME_HEIGHT)
 
-// graphics
-#define WINDOW_WIDTH 640
-#define WINDOW_HEIGHT 480
-#define TILE_SIZE 20
+#define SNAKE_GAME_WIDTH  24U
+#define SNAKE_GAME_HEIGHT 18U
+#define SNAKE_MATRIX_SIZE (SNAKE_GAME_WIDTH * SNAKE_GAME_HEIGHT)
 
-static SDL_Window* window = NULL;
-static SDL_Renderer* renderer = NULL;
+#define SNAKE_CELL_MAX_BITS 3U /* floor(log2(SNAKE_CELL_FOOD)) + 1 */
+#define SNAKE_CELL_SET_BITS  (~(~0u << SNAKE_CELL_MAX_BITS))
+#define SHIFT(x, y) (((x) + ((y) * SNAKE_GAME_WIDTH)) * SNAKE_CELL_MAX_BITS)
 
-// movement
-SDL_FRect drawRect;
-int direction;
-#define UP 0
-#define DOWN 1
-#define LEFT 2
-#define RIGHT 3
+static SDL_Joystick *joystick = NULL;
 
-// snake
-SDL_Point *snake, *food;
-size_t snakeSize, snakeCap, foodSize, foodCap;
-bool grow;
+typedef enum
+{
+    SNAKE_CELL_NOTHING = 0U,
+    SNAKE_CELL_SRIGHT = 1U,
+    SNAKE_CELL_SUP = 2U,
+    SNAKE_CELL_SLEFT = 3U,
+    SNAKE_CELL_SDOWN = 4U,
+    SNAKE_CELL_FOOD = 5U
+} SnakeCell;
 
+typedef enum
+{
+    SNAKE_DIR_RIGHT,
+    SNAKE_DIR_UP,
+    SNAKE_DIR_LEFT,
+    SNAKE_DIR_DOWN
+} SnakeDirection;
 
+typedef struct
+{
+    unsigned char cells[(SNAKE_MATRIX_SIZE * SNAKE_CELL_MAX_BITS) / 8U];
+    char head_xpos;
+    char head_ypos;
+    char tail_xpos;
+    char tail_ypos;
+    char next_dir;
+    char inhibit_tail_step;
+    unsigned occupied_cells;
+} SnakeContext;
 
-/////////////////
-/// Functions ///
-/////////////////
-void addToSnake(SDL_Point point) {
-	if (snakeSize == snakeCap) {
-		size_t newCap = (snakeCap == 0) ? 1 : snakeCap * 2;
-		SDL_Point* tmp_snake = (SDL_Point*) realloc(snake, newCap * sizeof(SDL_Point));
+typedef struct
+{
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    SnakeContext snake_ctx;
+    Uint64 last_step;
+} AppState;
 
-		if (tmp_snake == NULL) {
-			free(snake);
-			free(food);
-			exit(1);
-		}
-
-		snake = tmp_snake;
-		snakeCap = newCap;
-	}
-
-	snake[snakeSize] = point;
-	snakeSize++;
+SnakeCell snake_cell_at(const SnakeContext *ctx, char x, char y)
+{
+    const int shift = SHIFT(x, y);
+    unsigned short range;
+    SDL_memcpy(&range, ctx->cells + (shift / 8), sizeof(range));
+    return (SnakeCell)((range >> (shift % 8)) & SNAKE_CELL_SET_BITS);
 }
 
-void addToFood(SDL_Point point) {
-	if (foodSize == foodCap) {
-		size_t newCap = (foodCap == 0) ? 1 : foodCap * 2;
-		SDL_Point* tmp_food = (SDL_Point*) realloc(food, newCap * sizeof(SDL_Point));
-
-		if (tmp_food == NULL) {
-			free(snake);
-			free(food);
-			exit(1);
-		}
-
-		food = tmp_food;
-		foodCap = newCap;
-	}
-
-	food[foodSize] = point;
-	foodSize++;
+static void set_rect_xy_(SDL_FRect *r, short x, short y)
+{
+    r->x = (float)(x * SNAKE_BLOCK_SIZE_IN_PIXELS);
+    r->y = (float)(y * SNAKE_BLOCK_SIZE_IN_PIXELS);
 }
 
-SDL_Point randomTile() {
-	return (SDL_Point) { 
-		rand() % (WINDOW_WIDTH / TILE_SIZE - 1),
-		rand() % (WINDOW_HEIGHT / TILE_SIZE - 1)
-	};
+static void put_cell_at_(SnakeContext *ctx, char x, char y, SnakeCell ct)
+{
+    const int shift = SHIFT(x, y);
+    const int adjust = shift % 8;
+    unsigned char *const pos = ctx->cells + (shift / 8);
+    unsigned short range;
+    SDL_memcpy(&range, pos, sizeof(range));
+    range &= ~(SNAKE_CELL_SET_BITS << adjust); /* clear bits */
+    range |= (ct & SNAKE_CELL_SET_BITS) << adjust;
+    SDL_memcpy(pos, &range, sizeof(range));
 }
 
-void resetGame() {
-	snakeSize = foodSize = 0;
-
-	// init food size
-	for (int i = 0; i < 3; i++) {
-		addToFood(randomTile());
-	}
-
-	addToSnake(randomTile());
-	direction = (rand() % 4);
-	grow = false;
+static int are_cells_full_(SnakeContext *ctx)
+{
+    return ctx->occupied_cells == SNAKE_GAME_WIDTH * SNAKE_GAME_HEIGHT;
 }
 
-/////////////////
-/// Callbacks ///
-/////////////////
-// no need for a main function loop anymore
-
-// called at the beginning
-SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-	// check to see that sdl initalized 
-	if (!SDL_Init(SDL_INIT_VIDEO)) {
-		SDL_Log("Couldn't initalize SDL: %s", SDL_GetError());
-		return SDL_APP_FAILURE;
-	}
-	
-	// try and render the window given the title, width, height, widnow pointer, and renderer pointer
-	if (!SDL_CreateWindowAndRenderer("Snake", WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer)) {
-		SDL_Log("Couldn't initalize SDL: %s", SDL_GetError());
-		return SDL_APP_FAILURE;
-	}
-
-	drawRect.w = drawRect.h = TILE_SIZE;
-	srand(time(NULL));
-
-	resetGame();
-
-	return SDL_APP_CONTINUE;
+static void new_food_pos_(SnakeContext *ctx)
+{
+    while (true) {
+        const char x = (char) SDL_rand(SNAKE_GAME_WIDTH);
+        const char y = (char) SDL_rand(SNAKE_GAME_HEIGHT);
+        if (snake_cell_at(ctx, x, y) == SNAKE_CELL_NOTHING) {
+            put_cell_at_(ctx, x, y, SNAKE_CELL_FOOD);
+            break;
+        }
+    }
 }
 
-// handle events like key presses
-SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
-	switch(event->type) {
-		case SDL_EVENT_QUIT:
-			return SDL_APP_SUCCESS;
-		case SDL_EVENT_KEY_DOWN:
-			switch(event->key.scancode) {
-				// Quitting the game
-				case SDL_SCANCODE_ESCAPE:
-				case SDL_SCANCODE_Q:
-					return SDL_APP_SUCCESS;
-				// Resetting the game
-				case SDL_SCANCODE_R:
-					resetGame();
-					break;
-				// moving the snake
-				case SDL_SCANCODE_UP:
-				case SDL_SCANCODE_K:
-					direction = UP;
-					break;
-				case SDL_SCANCODE_DOWN:
-				case SDL_SCANCODE_J:
-					direction = DOWN;
-					break;
-				case SDL_SCANCODE_LEFT:
-				case SDL_SCANCODE_H:
-					direction = LEFT;
-					break;
-				case SDL_SCANCODE_RIGHT:
-				case SDL_SCANCODE_L:
-					direction = RIGHT;
-					break;
-			}
-			break;
-	}
-	return SDL_APP_CONTINUE;
+void snake_initialize(SnakeContext *ctx)
+{
+    int i;
+    SDL_zeroa(ctx->cells);
+    ctx->head_xpos = ctx->tail_xpos = SNAKE_GAME_WIDTH / 2;
+    ctx->head_ypos = ctx->tail_ypos = SNAKE_GAME_HEIGHT / 2;
+    ctx->next_dir = SNAKE_DIR_RIGHT;
+    ctx->inhibit_tail_step = ctx->occupied_cells = 4;
+    --ctx->occupied_cells;
+    put_cell_at_(ctx, ctx->tail_xpos, ctx->tail_ypos, SNAKE_CELL_SRIGHT);
+    for (i = 0; i < 4; i++) {
+        new_food_pos_(ctx);
+        ++ctx->occupied_cells;
+    }
 }
 
-// handles the main loop (animation rendering and game logic)
-SDL_AppResult SDL_AppIterate(void *appstate) {
-	// set the color to black
-	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-	// set the color to everywhere
-	SDL_RenderClear(renderer);
-	
-	// render the food
-	SDL_SetRenderDrawColor(renderer, 255, 0, 0, SDL_ALPHA_OPAQUE);
-	for (size_t i = 0; i < foodSize; i++) {
-		drawRect.x = food[i].x * TILE_SIZE;
-		drawRect.y = food[i].y * TILE_SIZE;
-		SDL_RenderFillRect(renderer, &drawRect);
-
-		// if the food ends up getting "eaten" (or collides with the head of the snake) 
-		// pick a new spot for the food
-		if ((snakeSize > 0) && (food[i].x == snake[0].x) && (food[i].y == snake[0].y)) {
-			food[i] = randomTile();
-			grow = true;
-		}
-	}
-
-	// collision detection with the snake
-	if (grow) addToSnake(snake[snakeSize]);
-	grow = false;
-	for (size_t i = snakeSize; i > 0; i--) { // discludes the head
-		if ((snakeSize > 0) && (snake[0].x == snake[i].x) && (snake[0].y == snake[i].y)) {
-			printf("You died. \nTotal Size: %ld\n", snakeSize);
-			resetGame();
-		}
-		snake[i].x = snake[i - 1].x;
-		snake[i].y = snake[i - 1].y;
-	}
-
-	// render the snake body	
-	SDL_SetRenderDrawColor(renderer, 0, 200, 0, SDL_ALPHA_OPAQUE);
-	for (size_t i = snakeSize; i > 0; i--) {
-		drawRect.x = snake[i].x * TILE_SIZE;
-		drawRect.y = snake[i].y * TILE_SIZE;
-		SDL_RenderFillRect(renderer, &drawRect);
-	}
-	
-	if (snakeSize > 0) {
-		// move the snake
-		if (direction == UP) { snake[0].y--; }
-		if (direction == DOWN) { snake[0].y++; }
-		if (direction == LEFT) { snake[0].x--; }
-		if (direction == RIGHT) { snake[0].x++; }
-
-		// don't have the snake collide with the edges
-		if(snake[0].x	>= (WINDOW_WIDTH / TILE_SIZE)) { snake[0].x = 0; }
-		if(snake[0].y	>= (WINDOW_HEIGHT / TILE_SIZE)) { snake[0].y = 0; }
-		if(snake[0].x < 0) { snake[0].x = (WINDOW_WIDTH / TILE_SIZE) -1; }
-		if(snake[0].y < 0) { snake[0].y = (WINDOW_HEIGHT / TILE_SIZE) -1; }
-
-		// render the snake
-		SDL_SetRenderDrawColor(renderer, 0, 255, 0, SDL_ALPHA_OPAQUE);
-		drawRect.x = snake[0].x * TILE_SIZE;
-		drawRect.y = snake[0].y * TILE_SIZE;
-		SDL_RenderFillRect(renderer, &drawRect);
-	}
-
-
-	// SDL_Log("Snake Length: %ld", snakeSize);
-	// SDL_Log("Head X: %d", snake[0].x);
-	// SDL_Log("Head Y: %d", snake[0].y);
-
-	// win logic
-	if (snakeSize >= (WINDOW_WIDTH / TILE_SIZE) * (WINDOW_HEIGHT / TILE_SIZE)) {
-		printf("You won!\n");
-		resetGame();
-	}
-
-
-	// frame rate
-	SDL_Delay(90);
-	// show what we just did to the renderer
-	SDL_RenderPresent(renderer);
-	return SDL_APP_CONTINUE;
+void snake_redir(SnakeContext *ctx, SnakeDirection dir)
+{
+    SnakeCell ct = snake_cell_at(ctx, ctx->head_xpos, ctx->head_ypos);
+    if ((dir == SNAKE_DIR_RIGHT && ct != SNAKE_CELL_SLEFT) ||
+        (dir == SNAKE_DIR_UP && ct != SNAKE_CELL_SDOWN) ||
+        (dir == SNAKE_DIR_LEFT && ct != SNAKE_CELL_SRIGHT) ||
+        (dir == SNAKE_DIR_DOWN && ct != SNAKE_CELL_SUP)) {
+        ctx->next_dir = dir;
+    }
 }
 
-// called at the end, and handles some of the exits
-void SDL_AppQuit(void *appstate, SDL_AppResult result) {
-	SDL_DestroyRenderer(renderer);
-	SDL_DestroyWindow(window);
+static void wrap_around_(char *val, char max)
+{
+    if (*val < 0) {
+        *val = max - 1;
+    } else if (*val > max - 1) {
+        *val = 0;
+    }
+}
 
-	free(snake);
-	free(food);
+void snake_step(SnakeContext *ctx)
+{
+    const SnakeCell dir_as_cell = (SnakeCell)(ctx->next_dir + 1);
+    SnakeCell ct;
+    char prev_xpos;
+    char prev_ypos;
+    /* Move tail forward */
+    if (--ctx->inhibit_tail_step == 0) {
+        ++ctx->inhibit_tail_step;
+        ct = snake_cell_at(ctx, ctx->tail_xpos, ctx->tail_ypos);
+        put_cell_at_(ctx, ctx->tail_xpos, ctx->tail_ypos, SNAKE_CELL_NOTHING);
+        switch (ct) {
+        case SNAKE_CELL_SRIGHT:
+            ctx->tail_xpos++;
+            break;
+        case SNAKE_CELL_SUP:
+            ctx->tail_ypos--;
+            break;
+        case SNAKE_CELL_SLEFT:
+            ctx->tail_xpos--;
+            break;
+        case SNAKE_CELL_SDOWN:
+            ctx->tail_ypos++;
+            break;
+        default:
+            break;
+        }
+        wrap_around_(&ctx->tail_xpos, SNAKE_GAME_WIDTH);
+        wrap_around_(&ctx->tail_ypos, SNAKE_GAME_HEIGHT);
+    }
+    /* Move head forward */
+    prev_xpos = ctx->head_xpos;
+    prev_ypos = ctx->head_ypos;
+    switch (ctx->next_dir) {
+    case SNAKE_DIR_RIGHT:
+        ++ctx->head_xpos;
+        break;
+    case SNAKE_DIR_UP:
+        --ctx->head_ypos;
+        break;
+    case SNAKE_DIR_LEFT:
+        --ctx->head_xpos;
+        break;
+    case SNAKE_DIR_DOWN:
+        ++ctx->head_ypos;
+        break;
+    default:
+        break;
+    }
+    wrap_around_(&ctx->head_xpos, SNAKE_GAME_WIDTH);
+    wrap_around_(&ctx->head_ypos, SNAKE_GAME_HEIGHT);
+    /* Collisions */
+    ct = snake_cell_at(ctx, ctx->head_xpos, ctx->head_ypos);
+    if (ct != SNAKE_CELL_NOTHING && ct != SNAKE_CELL_FOOD) {
+        snake_initialize(ctx);
+        return;
+    }
+    put_cell_at_(ctx, prev_xpos, prev_ypos, dir_as_cell);
+    put_cell_at_(ctx, ctx->head_xpos, ctx->head_ypos, dir_as_cell);
+    if (ct == SNAKE_CELL_FOOD) {
+        if (are_cells_full_(ctx)) {
+            snake_initialize(ctx);
+            return;
+        }
+        new_food_pos_(ctx);
+        ++ctx->inhibit_tail_step;
+        ++ctx->occupied_cells;
+    }
+}
+
+static SDL_AppResult handle_key_event_(SnakeContext *ctx, SDL_Scancode key_code)
+{
+    switch (key_code) {
+    /* Quit. */
+    case SDL_SCANCODE_ESCAPE:
+    case SDL_SCANCODE_Q:
+        return SDL_APP_SUCCESS;
+    /* Restart the game as if the program was launched. */
+    case SDL_SCANCODE_R:
+        snake_initialize(ctx);
+        break;
+    /* Decide new direction of the snake. */
+    case SDL_SCANCODE_RIGHT:
+        snake_redir(ctx, SNAKE_DIR_RIGHT);
+        break;
+    case SDL_SCANCODE_UP:
+        snake_redir(ctx, SNAKE_DIR_UP);
+        break;
+    case SDL_SCANCODE_LEFT:
+        snake_redir(ctx, SNAKE_DIR_LEFT);
+        break;
+    case SDL_SCANCODE_DOWN:
+        snake_redir(ctx, SNAKE_DIR_DOWN);
+        break;
+    default:
+        break;
+    }
+    return SDL_APP_CONTINUE;
+}
+
+static SDL_AppResult handle_hat_event_(SnakeContext *ctx, Uint8 hat) {
+    switch (hat) {
+    case SDL_HAT_RIGHT:
+        snake_redir(ctx, SNAKE_DIR_RIGHT);
+        break;
+    case SDL_HAT_UP:
+        snake_redir(ctx, SNAKE_DIR_UP);
+        break;
+    case SDL_HAT_LEFT:
+        snake_redir(ctx, SNAKE_DIR_LEFT);
+        break;
+    case SDL_HAT_DOWN:
+        snake_redir(ctx, SNAKE_DIR_DOWN);
+        break;
+    default:
+        break;
+    }
+    return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult SDL_AppIterate(void *appstate)
+{
+    AppState *as = (AppState *)appstate;
+    SnakeContext *ctx = &as->snake_ctx;
+    const Uint64 now = SDL_GetTicks();
+    SDL_FRect r;
+    unsigned i;
+    unsigned j;
+    int ct;
+
+    // run game logic if we're at or past the time to run it.
+    // if we're _really_ behind the time to run it, run it
+    // several times.
+    while ((now - as->last_step) >= STEP_RATE_IN_MILLISECONDS) {
+        snake_step(ctx);
+        as->last_step += STEP_RATE_IN_MILLISECONDS;
+    }
+
+    r.w = r.h = SNAKE_BLOCK_SIZE_IN_PIXELS;
+    SDL_SetRenderDrawColor(as->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+    SDL_RenderClear(as->renderer);
+    for (i = 0; i < SNAKE_GAME_WIDTH; i++) {
+        for (j = 0; j < SNAKE_GAME_HEIGHT; j++) {
+            ct = snake_cell_at(ctx, i, j);
+            if (ct == SNAKE_CELL_NOTHING)
+                continue;
+            set_rect_xy_(&r, i, j);
+            if (ct == SNAKE_CELL_FOOD)
+                SDL_SetRenderDrawColor(as->renderer, 80, 80, 255, SDL_ALPHA_OPAQUE);
+            else /* body */
+                SDL_SetRenderDrawColor(as->renderer, 0, 128, 0, SDL_ALPHA_OPAQUE);
+            SDL_RenderFillRect(as->renderer, &r);
+        }
+    }
+    SDL_SetRenderDrawColor(as->renderer, 255, 255, 0, SDL_ALPHA_OPAQUE); /*head*/
+    set_rect_xy_(&r, ctx->head_xpos, ctx->head_ypos);
+    SDL_RenderFillRect(as->renderer, &r);
+    SDL_RenderPresent(as->renderer);
+    return SDL_APP_CONTINUE;
+}
+
+static const struct
+{
+    const char *key;
+    const char *value;
+} extended_metadata[] =
+{
+    { SDL_PROP_APP_METADATA_URL_STRING, "https://examples.libsdl.org/SDL3/demo/01-snake/" },
+    { SDL_PROP_APP_METADATA_CREATOR_STRING, "SDL team" },
+    { SDL_PROP_APP_METADATA_COPYRIGHT_STRING, "Placed in the public domain" },
+    { SDL_PROP_APP_METADATA_TYPE_STRING, "game" }
+};
+
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
+{
+    size_t i;
+
+    if (!SDL_SetAppMetadata("Example Snake game", "1.0", "com.example.Snake")) {
+        return SDL_APP_FAILURE;
+    }
+
+    for (i = 0; i < SDL_arraysize(extended_metadata); i++) {
+        if (!SDL_SetAppMetadataProperty(extended_metadata[i].key, extended_metadata[i].value)) {
+            return SDL_APP_FAILURE;
+        }
+    }
+
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK)) {
+        SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+
+    AppState *as = (AppState *)SDL_calloc(1, sizeof(AppState));
+    if (!as) {
+        return SDL_APP_FAILURE;
+    }
+
+    *appstate = as;
+
+    if (!SDL_CreateWindowAndRenderer("examples/demo/snake", SDL_WINDOW_WIDTH, SDL_WINDOW_HEIGHT, 0, &as->window, &as->renderer)) {
+        return SDL_APP_FAILURE;
+    }
+
+    snake_initialize(&as->snake_ctx);
+
+    as->last_step = SDL_GetTicks();
+
+    return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
+{
+    SnakeContext *ctx = &((AppState *)appstate)->snake_ctx;
+    switch (event->type) {
+    case SDL_EVENT_QUIT:
+        return SDL_APP_SUCCESS;
+    case SDL_EVENT_JOYSTICK_ADDED:
+        if (joystick == NULL) {
+            joystick = SDL_OpenJoystick(event->jdevice.which);
+            if (!joystick) {
+                SDL_Log("Failed to open joystick ID %u: %s", (unsigned int) event->jdevice.which, SDL_GetError());
+            }
+        }
+        break;
+    case SDL_EVENT_JOYSTICK_REMOVED:
+        if (joystick && (SDL_GetJoystickID(joystick) == event->jdevice.which)) {
+            SDL_CloseJoystick(joystick);
+            joystick = NULL;
+        }
+        break;
+    case SDL_EVENT_JOYSTICK_HAT_MOTION:
+        return handle_hat_event_(ctx, event->jhat.value);
+    case SDL_EVENT_KEY_DOWN:
+        return handle_key_event_(ctx, event->key.scancode);
+    default:
+        break;
+    }
+    return SDL_APP_CONTINUE;
+}
+
+void SDL_AppQuit(void *appstate, SDL_AppResult result)
+{
+    if (joystick) {
+        SDL_CloseJoystick(joystick);
+    }
+    if (appstate != NULL) {
+        AppState *as = (AppState *)appstate;
+        SDL_DestroyRenderer(as->renderer);
+        SDL_DestroyWindow(as->window);
+        SDL_free(as);
+    }
 }
 
